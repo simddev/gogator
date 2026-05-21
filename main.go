@@ -95,7 +95,66 @@ func handlerAddFeed(s *state, cmd command) error {
 		return fmt.Errorf("could not create feed: %w", err)
 	}
 
+	_, err = s.db.CreateFeedFollow(context.Background(), database.CreateFeedFollowParams{
+		ID:        uuid.New(),
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+		UserID:    user.ID,
+		FeedID:    feed.ID,
+	})
+	if err != nil {
+		return fmt.Errorf("could not follow feed: %w", err)
+	}
+
 	fmt.Printf("%+v\n", feed)
+	return nil
+}
+
+func handlerFollow(s *state, cmd command) error {
+	if len(cmd.args) == 0 {
+		return errors.New("follow requires a url argument")
+	}
+	url := cmd.args[0]
+
+	user, err := s.db.GetUser(context.Background(), s.cfg.CurrentUserName)
+	if err != nil {
+		return fmt.Errorf("could not get current user: %w", err)
+	}
+
+	feed, err := s.db.GetFeedByURL(context.Background(), url)
+	if err != nil {
+		return fmt.Errorf("feed not found: %w", err)
+	}
+
+	ff, err := s.db.CreateFeedFollow(context.Background(), database.CreateFeedFollowParams{
+		ID:        uuid.New(),
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+		UserID:    user.ID,
+		FeedID:    feed.ID,
+	})
+	if err != nil {
+		return fmt.Errorf("could not follow feed: %w", err)
+	}
+
+	fmt.Printf("Feed: %s\nUser: %s\n", ff.FeedName, ff.UserName)
+	return nil
+}
+
+func handlerFollowing(s *state, cmd command) error {
+	user, err := s.db.GetUser(context.Background(), s.cfg.CurrentUserName)
+	if err != nil {
+		return fmt.Errorf("could not get current user: %w", err)
+	}
+
+	follows, err := s.db.GetFeedFollowsForUser(context.Background(), user.ID)
+	if err != nil {
+		return fmt.Errorf("could not get follows: %w", err)
+	}
+
+	for _, f := range follows {
+		fmt.Println(f.FeedName)
+	}
 	return nil
 }
 
@@ -184,6 +243,8 @@ func main() {
 	cmds.register("agg", handlerAgg)
 	cmds.register("addfeed", handlerAddFeed)
 	cmds.register("feeds", handlerFeeds)
+	cmds.register("follow", handlerFollow)
+	cmds.register("following", handlerFollowing)
 
 	if len(os.Args) < 2 {
 		fmt.Fprintln(os.Stderr, "error: not enough arguments")
