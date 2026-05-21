@@ -60,6 +60,21 @@ func handlerLogin(s *state, cmd command) error {
 	return nil
 }
 
+func handlerUsers(s *state, cmd command) error {
+	users, err := s.db.GetUsers(context.Background())
+	if err != nil {
+		return fmt.Errorf("could not get users: %w", err)
+	}
+	for _, u := range users {
+		if u.Name == s.cfg.CurrentUserName {
+			fmt.Printf("* %s (current)\n", u.Name)
+		} else {
+			fmt.Printf("* %s\n", u.Name)
+		}
+	}
+	return nil
+}
+
 func handlerReset(s *state, cmd command) error {
 	if err := s.db.DeleteAllUsers(context.Background()); err != nil {
 		return fmt.Errorf("reset failed: %w", err)
@@ -117,6 +132,7 @@ func main() {
 	cmds.register("login", handlerLogin)
 	cmds.register("register", handlerRegister)
 	cmds.register("reset", handlerReset)
+	cmds.register("users", handlerUsers)
 
 	if len(os.Args) < 2 {
 		fmt.Fprintln(os.Stderr, "error: not enough arguments")
