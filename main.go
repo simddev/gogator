@@ -7,10 +7,11 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/google/uuid"
-	_ "github.com/lib/pq"
+	"github.com/lib/pq"
 	"github.com/simddev/gogator/internal/config"
 	"github.com/simddev/gogator/internal/database"
 )
@@ -167,6 +168,24 @@ func handlerUnfollow(s *state, cmd command, user database.User) error {
 	return nil
 }
 
+var pubDateFormats = []string{
+	time.RFC1123Z,
+	time.RFC1123,
+	time.RFC3339,
+	"2006-01-02T15:04:05Z",
+	"Mon, 2 Jan 2006 15:04:05 -0700",
+	"Mon, 2 Jan 2006 15:04:05 MST",
+}
+
+func parsePubDate(s string) sql.NullTime {
+	for _, format := range pubDateFormats {
+		if t, err := time.Parse(format, s); err == nil {
+			return sql.NullTime{Time: t, Valid: true}
+		}
+	}
+	return sql.NullTime{}
+}
+
 func scrapeFeeds(s *state) {
 	feed, err := s.db.GetNextFeedToFetch(context.Background())
 	if err != nil {
@@ -186,8 +205,47 @@ func scrapeFeeds(s *state) {
 	}
 
 	for _, item := range rssFeed.Channel.Item {
-		fmt.Println(item.Title)
+		_, err := s.db.CreatePost(context.Background(), database.CreatePostParams{
+			ID:          uuid.New(),
+			CreatedAt:   time.Now(),
+			UpdatedAt:   time.Now(),
+			Title:       item.Title,
+			Url:         item.Link,
+			Description: sql.NullString{String: item.Description, Valid: item.Description != ""},
+			PublishedAt: parsePubDate(item.PubDate),
+			FeedID:      feed.ID,
+		})
+		if err != nil {
+			if pqErr, ok := err.(*pq.Error); !ok || pqErr.Code != "23505" {
+				fmt.Fprintln(os.Stderr, "error saving post:", err)
+			}
+		}
 	}
+	fmt.Printf("Fetched %d posts from %s\n", len(rssFeed.Channel.Item), feed.Name)
+}
+
+func handlerBrowse(s *state, cmd command, user database.User) error {
+	limit := 2
+	if len(cmd.args) > 0 {
+		n, err := strconv.Atoi(cmd.args[0])
+		if err != nil {
+			return fmt.Errorf("invalid limit: %w", err)
+		}
+		limit = n
+	}
+
+	posts, err := s.db.GetPostsForUser(context.Background(), database.GetPostsForUserParams{
+		UserID: user.ID,
+		Limit:  int32(limit),
+	})
+	if err != nil {
+		return fmt.Errorf("could not get posts: %w", err)
+	}
+
+	for _, p := range posts {
+		fmt.Printf("--- %s ---\n%s\n%s\n\n", p.Title, p.PublishedAt.Time.Format(time.RFC1123), p.Url)
+	}
+	return nil
 }
 
 func handlerAgg(s *state, cmd command) error {
@@ -286,6 +344,7 @@ func main() {
 	cmds.register("follow", middlewareLoggedIn(handlerFollow))
 	cmds.register("following", middlewareLoggedIn(handlerFollowing))
 	cmds.register("unfollow", middlewareLoggedIn(handlerUnfollow))
+	cmds.register("browse", middlewareLoggedIn(handlerBrowse))
 
 	if len(os.Args) < 2 {
 		fmt.Fprintln(os.Stderr, "error: not enough arguments")
