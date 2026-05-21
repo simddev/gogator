@@ -60,6 +60,14 @@ func handlerLogin(s *state, cmd command) error {
 	return nil
 }
 
+func handlerReset(s *state, cmd command) error {
+	if err := s.db.DeleteAllUsers(context.Background()); err != nil {
+		return fmt.Errorf("reset failed: %w", err)
+	}
+	fmt.Println("Database reset successfully")
+	return nil
+}
+
 func handlerRegister(s *state, cmd command) error {
 	if len(cmd.args) == 0 {
 		return errors.New("register requires a username argument")
@@ -108,6 +116,7 @@ func main() {
 	}
 	cmds.register("login", handlerLogin)
 	cmds.register("register", handlerRegister)
+	cmds.register("reset", handlerReset)
 
 	if len(os.Args) < 2 {
 		fmt.Fprintln(os.Stderr, "error: not enough arguments")
