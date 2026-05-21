@@ -167,13 +167,44 @@ func handlerUnfollow(s *state, cmd command, user database.User) error {
 	return nil
 }
 
-func handlerAgg(s *state, cmd command) error {
-	feed, err := fetchFeed(context.Background(), "https://www.wagslane.dev/index.xml")
+func scrapeFeeds(s *state) {
+	feed, err := s.db.GetNextFeedToFetch(context.Background())
 	if err != nil {
-		return fmt.Errorf("could not fetch feed: %w", err)
+		fmt.Fprintln(os.Stderr, "error getting next feed:", err)
+		return
 	}
-	fmt.Printf("%+v\n", feed)
-	return nil
+
+	if err := s.db.MarkFeedFetched(context.Background(), feed.ID); err != nil {
+		fmt.Fprintln(os.Stderr, "error marking feed fetched:", err)
+		return
+	}
+
+	rssFeed, err := fetchFeed(context.Background(), feed.Url)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "error fetching feed:", err)
+		return
+	}
+
+	for _, item := range rssFeed.Channel.Item {
+		fmt.Println(item.Title)
+	}
+}
+
+func handlerAgg(s *state, cmd command) error {
+	if len(cmd.args) == 0 {
+		return errors.New("agg requires a time_between_reqs argument (e.g. 1s, 1m, 1h)")
+	}
+	timeBetweenRequests, err := time.ParseDuration(cmd.args[0])
+	if err != nil {
+		return fmt.Errorf("invalid duration: %w", err)
+	}
+
+	fmt.Printf("Collecting feeds every %s\n", timeBetweenRequests)
+
+	ticker := time.NewTicker(timeBetweenRequests)
+	for ; ; <-ticker.C {
+		scrapeFeeds(s)
+	}
 }
 
 func handlerUsers(s *state, cmd command) error {
