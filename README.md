@@ -1,6 +1,6 @@
 # gator
 
-A multi-user RSS feed aggregator CLI. Add feeds, follow other users' feeds, and browse posts — all from your terminal, backed by PostgreSQL.
+A multi-user RSS feed aggregator CLI written in Go. Add feeds, follow other users' feeds, and browse posts — all from your terminal, backed by PostgreSQL.
 
 ## Prerequisites
 
